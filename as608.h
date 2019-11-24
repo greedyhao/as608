@@ -1,5 +1,11 @@
 #ifndef _AS608_H
 #define _AS608_H
+/**
+ * @author greedyhao (hao_kr@163.com)
+ * @version 0.0.1
+ * @date 2019-11-24
+ *  
+ */
 
 #include "rtthread.h"
 #include <rtdevice.h>
@@ -108,6 +114,8 @@ enum as60x_ack_type
     AS60X_BURN_FUNC_ERR = 0xF6, /* 表示烧写内部 FLASH 时，烧写 FLASH 失败 */ 
 };
 
+typedef enum as60x_ack_type as60x_ack_type_t;
+
 /**
  * @brief Get the sensor type object
  *        获取传感器驱动类型
@@ -156,6 +164,8 @@ rt_err_t set_password(void *param);
  * @return rt_err_t 
  */
 rt_err_t vfy_password(void);
+
+as60x_ack_type_t get_image(void);
 
 void as60x_init(const char *name);
 

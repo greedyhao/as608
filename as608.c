@@ -1,3 +1,10 @@
+/**
+ * @author greedyhao (hao_kr@163.com)
+ * @version 0.0.1
+ * @date 2019-11-24
+ *  
+ */
+
 #include "as608.h"
 #include <dfs_posix.h>
 
@@ -11,9 +18,38 @@ static rt_uint8_t tx_buf[BUF_SIZE] = {AS60X_FP_HEAD_H, AS60X_FP_HEAD_L, AS60X_FP
                                 AS60X_FP_ADDR_1, AS60X_FP_ADDR_2, AS60X_FP_ADDR_3};
 static rt_uint8_t rx_buf[BUF_SIZE];
 
-#define EVENT_AS60X_RX (1<<0)
+#define EVENT_AS60X_RX      (1 << 0)
+#define EVENT_AS60X_TOUCH   (1 << 1)
 static struct rt_event event_fp;
 static rt_device_t as60x_dev;
+static rt_uint8_t flag_vfy = 0; /* 握手成功标志 */
+
+/**
+ * @brief verify checksum in buf is right
+ * 
+ * @param buf 
+ * @return rt_uint8_t 0 is error, 1 is ok
+ */
+static rt_uint8_t cnt_checksum(rt_uint8_t *buf)
+{
+    rt_uint8_t checksum_is_ok = 0;
+    rt_uint16_t i = 0;
+    rt_uint16_t checksum = 0; /* 超出两字节的进位不理会 */
+    rt_uint8_t pkg_len_h = buf[AS60X_FP_LEN_BIT] << 8;
+    rt_uint16_t pkg_len = pkg_len_h + buf[AS60X_FP_LEN_BIT+1];
+
+    for (i = 0; i < pkg_len; i++)
+    {
+        checksum += buf[i+AS60X_FP_LEN_BIT];
+    }
+    checksum += buf[AS60X_FP_TOK_BIT];
+
+    if ((*(buf+AS60X_PREFIX_SIZE+pkg_len-2) == checksum&0xff00)
+    && (*(buf+AS60X_PREFIX_SIZE+pkg_len-1) == checksum&0x00ff))
+        checksum_is_ok = 1;
+
+    return checksum_is_ok;
+}
 
 /**
  * @brief tx_buf add checksum
@@ -154,7 +190,6 @@ static rt_err_t master_get_rx(void)
     rt_uint8_t rx_cnt = 0;
 
     ret = rt_event_recv(&event_fp, EVENT_AS60X_RX, RT_EVENT_FLAG_OR | RT_EVENT_FLAG_CLEAR, 1000, &rec);
-    LOG_D("rec code:%x", rec);
     if (ret != RT_EOK)
         return ret;
 
@@ -226,7 +261,10 @@ rt_err_t vfy_password(void)
     if ((rx_buf[AS60X_FP_HEAD_BIT] == AS60X_FP_HEAD_H) && (rx_buf[AS60X_FP_HEAD_BIT+1] == AS60X_FP_HEAD_L))
     {
         if ((rx_buf[AS60X_FP_REP_ACK_BIT(0)] == 0x00) && (rx_buf[AS60X_FP_REP_ACK_BIT(1)] == 0x00))
+        {
+            flag_vfy = 1;
             ret = RT_EOK;
+        }
     }
     else
     {
@@ -236,6 +274,62 @@ rt_err_t vfy_password(void)
 
     return ret;
 }
+
+as60x_ack_type_t get_image(void)
+{
+    as60x_ack_type_t code = AS60X_CMD_OK;
+    rt_err_t ret = -1;
+    rt_size_t size = 0;
+
+    if (flag_vfy != 1)
+    {
+        LOG_E("Please verify the password before using the fingerprint module!");
+        code = AS60X_UNDEF_ERR;
+        goto _exit;
+    }
+
+    tx_buf[AS60X_FP_TOK_BIT] = 0x01;
+    tx_buf[AS60X_FP_LEN_BIT] = 0x00;
+    tx_buf[AS60X_FP_LEN_BIT+1] = 0x03;
+    tx_buf[AS60X_FP_INS_CMD_BIT] = 0x01;
+    tx_buf_add_checksum(tx_buf);
+    cnt_tx_pkg_size(&size);
+
+#if DBG_LVL == DBG_LOG
+    rt_kprintf("tx_size:%d tx: ", size);
+    for (int i = 0; i < size; i++)
+    {
+        rt_kprintf("%x ", tx_buf[i]);
+    }
+    rt_kprintf("\r\n");
+#endif
+
+    rt_device_write(as60x_dev, 0, tx_buf, size);
+    ret = master_get_rx();
+    if (-RT_ETIMEOUT == ret)
+    {
+        LOG_E("Function get_image timeout!");
+        code = AS60X_UNDEF_ERR;
+        goto _exit;
+    }
+
+    if ((rx_buf[AS60X_FP_HEAD_BIT] == AS60X_FP_HEAD_H) && (rx_buf[AS60X_FP_HEAD_BIT+1] == AS60X_FP_HEAD_L))
+    {
+        if (cnt_checksum(rx_buf) != 1)
+            code = AS60X_DAT_ERR;
+        else
+            code = rx_buf[AS60X_FP_REP_ACK_BIT(0)]; /* 校验和正确则返回模块确认码 */
+    }
+    else
+    {
+        code = AS60X_DAT_ERR;
+        return ret;
+    }
+
+_exit:
+    return code;
+}
+MSH_CMD_EXPORT(get_image, "get image");
 
 void as60x_init(const char *name)
 {

@@ -1,3 +1,10 @@
+/**
+ * @author greedyhao (hao_kr@163.com)
+ * @version 0.0.1
+ * @date 2019-11-24
+ *  
+ */
+
 #include "as608.h"
 
 #define AS60X_UART_NAME "uart3"
