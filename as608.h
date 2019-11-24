@@ -165,7 +165,14 @@ rt_err_t set_password(void *param);
  */
 rt_err_t vfy_password(void);
 
+/**
+ * @brief Get the image object
+ *        获取传感器图像
+ * 
+ * @return as60x_ack_type_t 模块确认码
+ */
 as60x_ack_type_t get_image(void);
+as60x_ack_type_t img_gen_char(void);
 
 void as60x_init(const char *name);
 

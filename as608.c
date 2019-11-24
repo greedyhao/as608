@@ -245,7 +245,7 @@ rt_err_t vfy_password(void)
     cnt_tx_pkg_size(&size);
 
 #if DBG_LVL == DBG_LOG
-    rt_kprintf("tx_size:%d tx: ", size);
+    rt_kprintf("func:%s tx_size:%d tx: ", __func__, size);
     for (int i = 0; i < size; i++)
     {
         rt_kprintf("%x ", tx_buf[i]);
@@ -275,6 +275,12 @@ rt_err_t vfy_password(void)
     return ret;
 }
 
+/**
+ * @brief Get the image object
+ *        获取传感器图像
+ * 
+ * @return as60x_ack_type_t 模块确认码
+ */
 as60x_ack_type_t get_image(void)
 {
     as60x_ack_type_t code = AS60X_CMD_OK;
@@ -296,7 +302,7 @@ as60x_ack_type_t get_image(void)
     cnt_tx_pkg_size(&size);
 
 #if DBG_LVL == DBG_LOG
-    rt_kprintf("tx_size:%d tx: ", size);
+    rt_kprintf("func:%s tx_size:%d tx: ", __func__, size);
     for (int i = 0; i < size; i++)
     {
         rt_kprintf("%x ", tx_buf[i]);
@@ -318,7 +324,7 @@ as60x_ack_type_t get_image(void)
         if (cnt_checksum(rx_buf) != 1)
             code = AS60X_DAT_ERR;
         else
-            code = rx_buf[AS60X_FP_REP_ACK_BIT(0)]; /* 校验和正确则返回模块确认码 */
+            code = (as60x_ack_type_t)rx_buf[AS60X_FP_REP_ACK_BIT(0)]; /* 校验和正确则返回模块确认码 */
     }
     else
     {
@@ -330,6 +336,63 @@ _exit:
     return code;
 }
 MSH_CMD_EXPORT(get_image, "get image");
+
+as60x_ack_type_t img_gen_char(void)
+{
+    as60x_ack_type_t code = AS60X_CMD_OK;
+    rt_err_t ret = -1;
+    rt_size_t size = 0;
+
+    if (flag_vfy != 1)
+    {
+        LOG_E("Please verify the password before using the fingerprint module!");
+        code = AS60X_UNDEF_ERR;
+        goto _exit;
+    }
+
+    tx_buf[AS60X_FP_TOK_BIT] = 0x01;
+    tx_buf[AS60X_FP_LEN_BIT] = 0x00;
+    tx_buf[AS60X_FP_LEN_BIT+1] = 0x04;
+    tx_buf[AS60X_FP_INS_CMD_BIT] = 0x02;
+    tx_buf[AS60X_FP_INS_PAR_BIT(0)] = 0x01;
+    tx_buf_add_checksum(tx_buf);
+    cnt_tx_pkg_size(&size);
+
+#if DBG_LVL == DBG_LOG
+    rt_kprintf("func:%s tx_size:%d tx: ", __func__, size);
+    for (int i = 0; i < size; i++)
+    {
+        rt_kprintf("%x ", tx_buf[i]);
+    }
+    rt_kprintf("\r\n");
+#endif
+
+    rt_device_write(as60x_dev, 0, tx_buf, size);
+    ret = master_get_rx();
+    if (-RT_ETIMEOUT == ret)
+    {
+        LOG_E("Function get_image timeout!");
+        code = AS60X_UNDEF_ERR;
+        goto _exit;
+    }
+
+    if ((rx_buf[AS60X_FP_HEAD_BIT] == AS60X_FP_HEAD_H) && (rx_buf[AS60X_FP_HEAD_BIT+1] == AS60X_FP_HEAD_L))
+    {
+        if (cnt_checksum(rx_buf) != 1)
+            code = AS60X_DAT_ERR;
+        else
+            code = (as60x_ack_type_t)rx_buf[AS60X_FP_REP_ACK_BIT(0)]; /* 校验和正确则返回模块确认码 */
+    }
+    else
+    {
+        code = AS60X_DAT_ERR;
+        return ret;
+    }
+
+_exit:
+    return code;
+}
+MSH_CMD_EXPORT(img_gen_char, "image generate char");
 
 void as60x_init(const char *name)
 {
