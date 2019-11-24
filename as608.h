@@ -1,11 +1,12 @@
-#ifndef _AS608_H
-#define _AS608_H
 /**
  * @author greedyhao (hao_kr@163.com)
- * @version 0.0.1
+ * @version 0.0.2
  * @date 2019-11-24
  *  
  */
+
+#ifndef _AS608_H
+#define _AS608_H
 
 #include "rtthread.h"
 #include <rtdevice.h>
@@ -163,7 +164,7 @@ rt_err_t set_password(void *param);
  * @param param 
  * @return rt_err_t 
  */
-rt_err_t vfy_password(void);
+rt_err_t fp_vfy_password(void);
 
 /**
  * @brief Get the image object
@@ -171,8 +172,15 @@ rt_err_t vfy_password(void);
  * 
  * @return as60x_ack_type_t 模块确认码
  */
-as60x_ack_type_t get_image(void);
-as60x_ack_type_t img_gen_char(void);
+as60x_ack_type_t fp_get_image(void);
+as60x_ack_type_t fp_gen_char(rt_uint8_t buff_id);
+
+/**
+ * @brief  以 CharBuffer1 或 CharBuffer2 中的特征文件搜索整个或部分指纹库。若搜索到，则返回页码
+ * 
+ * @return as60x_ack_type_t 
+ */
+as60x_ack_type_t fp_search(rt_uint16_t *page_id, rt_uint16_t *mat_score);
 
 void as60x_init(const char *name);
 

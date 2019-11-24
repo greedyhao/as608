@@ -1,6 +1,6 @@
 /**
  * @author greedyhao (hao_kr@163.com)
- * @version 0.0.1
+ * @version 0.0.2
  * @date 2019-11-24
  *  
  */
@@ -44,9 +44,13 @@ static rt_uint8_t cnt_checksum(rt_uint8_t *buf)
     }
     checksum += buf[AS60X_FP_TOK_BIT];
 
-    if ((*(buf+AS60X_PREFIX_SIZE+pkg_len-2) == checksum&0xff00)
+    if ((*(buf+AS60X_PREFIX_SIZE+pkg_len-2) == ((checksum&0xff00)>>8))
     && (*(buf+AS60X_PREFIX_SIZE+pkg_len-1) == checksum&0x00ff))
         checksum_is_ok = 1;
+    else
+    {
+        LOG_D("checksum_1:%x,checksum_2:%x,sum_1:%x,sum_2:%x", checksum&0xff00,checksum&0x00ff,*(buf+AS60X_PREFIX_SIZE+pkg_len-2),*(buf+AS60X_PREFIX_SIZE+pkg_len-1));
+    }
 
     return checksum_is_ok;
 }
@@ -71,7 +75,7 @@ static void tx_buf_add_checksum(rt_uint8_t *buf)
     }
     checksum += buf[AS60X_FP_TOK_BIT];
 
-    *(buf+AS60X_PREFIX_SIZE+pkg_len-2) = checksum&0xff00;
+    *(buf+AS60X_PREFIX_SIZE+pkg_len-2) = (checksum&0xff00)<<8;
     *(buf+AS60X_PREFIX_SIZE+pkg_len-1) = checksum&0x00ff;
 }
 
@@ -107,7 +111,7 @@ MSH_CMD_EXPORT(as60x_rx,"as60x_rx");
 
 static rt_err_t as60x_hand_shake(void)
 {
-    rt_uint8_t i;
+    // rt_uint8_t i;
     rt_err_t ret = RT_EOK;
     struct serial_configure as60x_cfg = RT_SERIAL_CONFIG_DEFAULT;
     rt_uint32_t baud_table[12] = {BAUD_RATE_57600, BAUD_RATE_115200, BAUD_RATE_38400, BAUD_RATE_19200,
@@ -123,7 +127,7 @@ static rt_err_t as60x_hand_shake(void)
     //     rt_device_control(as60x_dev, RT_DEVICE_CTRL_CONFIG, &as60x_cfg);
     //     // rt_device_open(as60x_dev, RT_DEVICE_FLAG_INT_RX);
     //     // rt_device_set_rx_indicate(as60x_dev, as60x_rx);
-    //     ret = vfy_password();
+    //     ret = fp_vfy_password();
     //     if (ret == -RT_ETIMEOUT)
     //     {
     //         LOG_I("Hand shake in %d timeout.", as60x_cfg.baud_rate);
@@ -147,7 +151,7 @@ static rt_err_t as60x_hand_shake(void)
 
     as60x_cfg.baud_rate = baud_table[1];
     rt_device_control(as60x_dev, RT_DEVICE_CTRL_CONFIG, &as60x_cfg);
-    ret = vfy_password();
+    ret = fp_vfy_password();
     if (ret == -RT_ETIMEOUT)
     {
         LOG_I("Hand shake in %d timeout.", as60x_cfg.baud_rate);
@@ -229,7 +233,7 @@ static rt_err_t master_get_rx(void)
     return ret;
 }
 
-rt_err_t vfy_password(void)
+rt_err_t fp_vfy_password(void)
 {
     rt_err_t ret = -1;
     rt_size_t size = 0;
@@ -281,7 +285,7 @@ rt_err_t vfy_password(void)
  * 
  * @return as60x_ack_type_t 模块确认码
  */
-as60x_ack_type_t get_image(void)
+as60x_ack_type_t fp_get_image(void)
 {
     as60x_ack_type_t code = AS60X_CMD_OK;
     rt_err_t ret = -1;
@@ -314,7 +318,7 @@ as60x_ack_type_t get_image(void)
     ret = master_get_rx();
     if (-RT_ETIMEOUT == ret)
     {
-        LOG_E("Function get_image timeout!");
+        LOG_E("Function fp_get_image timeout!");
         code = AS60X_UNDEF_ERR;
         goto _exit;
     }
@@ -329,15 +333,15 @@ as60x_ack_type_t get_image(void)
     else
     {
         code = AS60X_DAT_ERR;
-        return ret;
+        goto _exit;
     }
 
 _exit:
     return code;
 }
-MSH_CMD_EXPORT(get_image, "get image");
+MSH_CMD_EXPORT(fp_get_image, "get image");
 
-as60x_ack_type_t img_gen_char(void)
+as60x_ack_type_t fp_gen_char(rt_uint8_t buff_id)
 {
     as60x_ack_type_t code = AS60X_CMD_OK;
     rt_err_t ret = -1;
@@ -350,11 +354,22 @@ as60x_ack_type_t img_gen_char(void)
         goto _exit;
     }
 
+    if (buff_id < 0x01)
+    {
+        buff_id = 0x01;
+        LOG_W("buff id out of range(0x01-0x02)!");
+    }
+    if (buff_id > 0x02)
+    {
+        buff_id = 0x02;
+        LOG_W("buff id out of range(0x01-0x02)!");
+    }
+
     tx_buf[AS60X_FP_TOK_BIT] = 0x01;
     tx_buf[AS60X_FP_LEN_BIT] = 0x00;
     tx_buf[AS60X_FP_LEN_BIT+1] = 0x04;
     tx_buf[AS60X_FP_INS_CMD_BIT] = 0x02;
-    tx_buf[AS60X_FP_INS_PAR_BIT(0)] = 0x01;
+    tx_buf[AS60X_FP_INS_PAR_BIT(0)] = buff_id;
     tx_buf_add_checksum(tx_buf);
     cnt_tx_pkg_size(&size);
 
@@ -371,7 +386,7 @@ as60x_ack_type_t img_gen_char(void)
     ret = master_get_rx();
     if (-RT_ETIMEOUT == ret)
     {
-        LOG_E("Function get_image timeout!");
+        LOG_E("Function fp_gen_char timeout!");
         code = AS60X_UNDEF_ERR;
         goto _exit;
     }
@@ -386,13 +401,96 @@ as60x_ack_type_t img_gen_char(void)
     else
     {
         code = AS60X_DAT_ERR;
-        return ret;
+        goto _exit;
     }
 
 _exit:
     return code;
 }
-MSH_CMD_EXPORT(img_gen_char, "image generate char");
+
+static void fp_gen_char_test(void)
+{
+    fp_gen_char(0x01);
+}
+MSH_CMD_EXPORT(fp_gen_char_test, "image generate char");
+
+as60x_ack_type_t fp_search(rt_uint16_t *page_id, rt_uint16_t *mat_score)
+{
+    as60x_ack_type_t code = AS60X_CMD_OK;
+    rt_err_t ret = -1;
+    rt_size_t size = 0;
+
+    if (flag_vfy != 1)
+    {
+        LOG_E("Please verify the password before using the fingerprint module!");
+        code = AS60X_UNDEF_ERR;
+        goto _exit;
+    }
+
+    tx_buf[AS60X_FP_TOK_BIT] = 0x01;
+    tx_buf[AS60X_FP_LEN_BIT] = 0x00;
+    tx_buf[AS60X_FP_LEN_BIT+1] = 0x08;
+    tx_buf[AS60X_FP_INS_CMD_BIT] = 0x04;
+    tx_buf[AS60X_FP_INS_PAR_BIT(0)] = 0x01;
+    tx_buf[AS60X_FP_INS_PAR_BIT(1)] = 0x00;
+    tx_buf[AS60X_FP_INS_PAR_BIT(2)] = 0x00;
+    tx_buf[AS60X_FP_INS_PAR_BIT(3)] = 0x01;
+    tx_buf[AS60X_FP_INS_PAR_BIT(4)] = 0x2C;
+    tx_buf_add_checksum(tx_buf);
+    cnt_tx_pkg_size(&size);
+
+#if DBG_LVL == DBG_LOG
+    rt_kprintf("func:%s tx_size:%d tx: ", __func__, size);
+    for (int i = 0; i < size; i++)
+    {
+        rt_kprintf("%x ", tx_buf[i]);
+    }
+    rt_kprintf("\r\n");
+#endif
+
+    rt_device_write(as60x_dev, 0, tx_buf, size);
+    ret = master_get_rx();
+    if (-RT_ETIMEOUT == ret)
+    {
+        LOG_E("Function fp_search timeout!");
+        code = AS60X_UNDEF_ERR;
+        goto _exit;
+    }
+
+    if ((rx_buf[AS60X_FP_HEAD_BIT] == AS60X_FP_HEAD_H) && (rx_buf[AS60X_FP_HEAD_BIT+1] == AS60X_FP_HEAD_L))
+    {
+        if (cnt_checksum(rx_buf) != 1)
+        {
+            code = AS60X_DAT_ERR;
+            goto _exit;
+        }
+        else
+            code = (as60x_ack_type_t)rx_buf[AS60X_FP_REP_ACK_BIT(0)]; /* 校验和正确则返回模块确认码 */
+        
+        rt_uint8_t page_id_tmp = rx_buf[AS60X_FP_REP_ACK_BIT(1)] << 8;
+        *page_id = page_id_tmp + rx_buf[AS60X_FP_REP_ACK_BIT(2)];
+        rt_uint8_t mat_score_tmp = rx_buf[AS60X_FP_REP_ACK_BIT(3)] << 8;
+        *mat_score = mat_score_tmp + rx_buf[AS60X_FP_REP_ACK_BIT(4)];
+        LOG_D("*page_id=%lx, *mat_score=%lx", *page_id, *mat_score);
+    }
+    else
+    {
+        code = AS60X_DAT_ERR;
+        goto _exit;
+    }
+
+_exit:
+    return code;
+}
+
+static void fp_search_test(void)
+{
+    rt_uint16_t page_id = 0;
+    rt_uint16_t mat_score = 0;
+    fp_search(&page_id, &mat_score);
+    LOG_I("page_id=%lx, mat_score=%lx", page_id, mat_score);
+}
+MSH_CMD_EXPORT(fp_search_test, "fp search test");
 
 void as60x_init(const char *name)
 {
