@@ -173,6 +173,13 @@ rt_err_t fp_vfy_password(void);
  * @return as60x_ack_type_t 模块确认码
  */
 as60x_ack_type_t fp_get_image(void);
+
+/**
+ * @brief 将 ImageBuffer 中的原始图像生成指纹特征文件存于 CharBuffer1 或 CharBuffer2
+ * 
+ * @param buff_id 
+ * @return as60x_ack_type_t 
+ */
 as60x_ack_type_t fp_gen_char(rt_uint8_t buff_id);
 
 /**
@@ -182,8 +189,20 @@ as60x_ack_type_t fp_gen_char(rt_uint8_t buff_id);
  */
 as60x_ack_type_t fp_search(rt_uint16_t *page_id, rt_uint16_t *mat_score);
 
+/**
+ * @brief  将 CharBuffer1 与 CharBuffer2 中的特征文件合并生成模板，结果存于 CharBuffer1 与 CharBuffer2
+ * 
+ * @return as60x_ack_type_t 
+ */
 as60x_ack_type_t fp_reg_model(void);
 
+/**
+ * @brief  将 CharBuffer1 或 CharBuffer2 中的模板文件存到 PageID 号 flash 数据库位置
+ * 
+ * @param buff_id 需要存储的 CharBuffer 号
+ * @param page_id 存储位置
+ * @return as60x_ack_type_t 
+ */
 as60x_ack_type_t fp_str_char(rt_uint8_t buff_id, rt_uint16_t page_id);
 
 /* 上层 API */
@@ -199,6 +218,7 @@ void as60x_init(const char *name);
  * @brief 设置通信使用的波特率，未来版本会弃用
  * 
  * @param baud 
+ * @note 模块初始化前必须先设置波特率
  */
 void as60x_set_hand_shake_baud(rt_uint32_t baud);
 
