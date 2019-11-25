@@ -9,11 +9,6 @@
 
 #define AS60X_UART_NAME "uart3"
 
-void as60x_sample_entry(void *parm)
-{
-
-}
-
 void as60x_sample(int argc, char *argv[])
 {
     as60x_set_hand_shake_baud(115200);
