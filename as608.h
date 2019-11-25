@@ -1,6 +1,6 @@
 /**
  * @author greedyhao (hao_kr@163.com)
- * @version 0.0.2
+ * @version 1.0.0
  * @date 2019-11-24
  *  
  */
@@ -124,29 +124,29 @@ typedef enum as60x_ack_type as60x_ack_type_t;
  * @param param 
  * @return rt_err_t 
  */
-rt_err_t get_sensor_type(void *param);
+rt_err_t get_sensor_type(void *param);      // TODO
 
-rt_err_t get_database_size(void *param);
+rt_err_t get_database_size(void *param);    // TODO
 
-rt_err_t get_secure_level(void *param);
+rt_err_t get_secure_level(void *param);     // TODO
 
-rt_err_t set_device_addr(void *param);
-rt_err_t get_device_addr(void *param);
+rt_err_t set_device_addr(void *param);      // TODO
+rt_err_t get_device_addr(void *param);      // TODO
 
-rt_err_t set_packet_size(void *param);
-rt_err_t get_packet_size(void *param);
+rt_err_t set_packet_size(void *param);      // TODO
+rt_err_t get_packet_size(void *param);      // TODO
 
-rt_err_t set_baud_rate(void *param);
-rt_err_t get_baud_rate(void *param);
+rt_err_t set_baud_rate(void *param);        // TODO
+rt_err_t get_baud_rate(void *param);        // TODO
 
-rt_err_t get_usb_vid(void *param);
-rt_err_t get_usb_pid(void *param);
+rt_err_t get_usb_vid(void *param);          // TODO
+rt_err_t get_usb_pid(void *param);          // TODO
 
-rt_err_t get_product_sn(void *param);
-rt_err_t get_software_ver(void *param);
-rt_err_t get_manufacturer(void *param);
+rt_err_t get_product_sn(void *param);       // TODO
+rt_err_t get_software_ver(void *param);     // TODO
+rt_err_t get_manufacturer(void *param);     // TODO
 
-rt_err_t get_sensor_name(void *param);
+rt_err_t get_sensor_name(void *param);      // TODO
 
 /**
  * @brief Set the password object
@@ -155,7 +155,7 @@ rt_err_t get_sensor_name(void *param);
  * @return rt_err_t 
  * @note 最好别改模块这个握手密码
  */
-rt_err_t set_password(void *param);
+rt_err_t set_password(void *param);         // TODO
 
 /**
  * @brief verify password
@@ -182,6 +182,37 @@ as60x_ack_type_t fp_gen_char(rt_uint8_t buff_id);
  */
 as60x_ack_type_t fp_search(rt_uint16_t *page_id, rt_uint16_t *mat_score);
 
+as60x_ack_type_t fp_reg_model(void);
+
+as60x_ack_type_t fp_str_char(rt_uint8_t buff_id, rt_uint16_t page_id);
+
+/* 上层 API */
+
+/**
+ * @brief 模块初始化函数
+ * 
+ * @param name 
+ */
 void as60x_init(const char *name);
+
+/**
+ * @brief 设置通信使用的波特率，未来版本会弃用
+ * 
+ * @param baud 
+ */
+void as60x_set_hand_shake_baud(rt_uint32_t baud);
+
+/**
+ * @brief 指纹录入函数
+ * 
+ * @param page_id 指纹存储页
+ */
+void as60x_str_fp_to_flash(rt_uint16_t page_id);
+
+/**
+ * @brief 指纹搜索函数
+ * 
+ */
+void as60x_search_fp_in_flash(void);
 
 #endif

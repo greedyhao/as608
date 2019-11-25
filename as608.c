@@ -1,6 +1,6 @@
 /**
  * @author greedyhao (hao_kr@163.com)
- * @version 0.0.2
+ * @version 1.0.0
  * @date 2019-11-24
  *  
  */
@@ -23,6 +23,7 @@ static rt_uint8_t rx_buf[BUF_SIZE];
 static struct rt_event event_fp;
 static rt_device_t as60x_dev;
 static rt_uint8_t flag_vfy = 0; /* 握手成功标志 */
+static rt_uint32_t hs_baud = 0;
 
 /**
  * @brief verify checksum in buf is right
@@ -107,16 +108,20 @@ static rt_err_t as60x_rx(rt_device_t dev, rt_size_t size)
 
     return RT_EOK;
 }
-MSH_CMD_EXPORT(as60x_rx,"as60x_rx");
+
+static void as60x_wak_handle(void *args)
+{
+    rt_event_send(&event_fp, EVENT_AS60X_TOUCH);
+}
 
 static rt_err_t as60x_hand_shake(void)
 {
     // rt_uint8_t i;
     rt_err_t ret = RT_EOK;
     struct serial_configure as60x_cfg = RT_SERIAL_CONFIG_DEFAULT;
-    rt_uint32_t baud_table[12] = {BAUD_RATE_57600, BAUD_RATE_115200, BAUD_RATE_38400, BAUD_RATE_19200,
-                                 BAUD_RATE_9600, 105600, 96000, 86400,
-                                 76800, 67200, 48000, 28800};
+    // rt_uint32_t baud_table[12] = {BAUD_RATE_57600, BAUD_RATE_115200, BAUD_RATE_38400, BAUD_RATE_19200,
+    //                              BAUD_RATE_9600, 105600, 96000, 86400,
+    //                              76800, 67200, 48000, 28800};
 
     rt_device_open(as60x_dev, RT_DEVICE_FLAG_INT_RX);
     rt_device_set_rx_indicate(as60x_dev, as60x_rx);
@@ -149,7 +154,8 @@ static rt_err_t as60x_hand_shake(void)
     //     }
     // }
 
-    as60x_cfg.baud_rate = baud_table[1];
+    // as60x_cfg.baud_rate = baud_table[1];
+    as60x_cfg.baud_rate = hs_baud;
     rt_device_control(as60x_dev, RT_DEVICE_CTRL_CONFIG, &as60x_cfg);
     ret = fp_vfy_password();
     if (ret == -RT_ETIMEOUT)
@@ -175,16 +181,6 @@ static rt_err_t as60x_hand_shake(void)
     ret = -RT_ERROR;
     return ret;    
 }
-MSH_CMD_EXPORT(as60x_hand_shake, "as60x hand shake");
-
-// static void as60x_thread_entry(void *param)
-// {
-//     while (1)
-//     {
-        
-//     }
-    
-// }
 
 static rt_err_t master_get_rx(void)
 {
@@ -339,7 +335,6 @@ as60x_ack_type_t fp_get_image(void)
 _exit:
     return code;
 }
-MSH_CMD_EXPORT(fp_get_image, "get image");
 
 as60x_ack_type_t fp_gen_char(rt_uint8_t buff_id)
 {
@@ -407,12 +402,6 @@ as60x_ack_type_t fp_gen_char(rt_uint8_t buff_id)
 _exit:
     return code;
 }
-
-static void fp_gen_char_test(void)
-{
-    fp_gen_char(0x01);
-}
-MSH_CMD_EXPORT(fp_gen_char_test, "image generate char");
 
 as60x_ack_type_t fp_search(rt_uint16_t *page_id, rt_uint16_t *mat_score)
 {
@@ -488,9 +477,231 @@ static void fp_search_test(void)
     rt_uint16_t page_id = 0;
     rt_uint16_t mat_score = 0;
     fp_search(&page_id, &mat_score);
-    LOG_I("page_id=%lx, mat_score=%lx", page_id, mat_score);
+    LOG_I("Find the fingerprint! page_id=%lx, mat_score=%lx", page_id, mat_score);
 }
-MSH_CMD_EXPORT(fp_search_test, "fp search test");
+
+as60x_ack_type_t fp_reg_model(void)
+{
+    as60x_ack_type_t code = AS60X_CMD_OK;
+    rt_err_t ret = -1;
+    rt_size_t size = 0;
+
+    if (flag_vfy != 1)
+    {
+        LOG_E("Please verify the password before using the fingerprint module!");
+        code = AS60X_UNDEF_ERR;
+        goto _exit;
+    }
+
+    tx_buf[AS60X_FP_TOK_BIT] = 0x01;
+    tx_buf[AS60X_FP_LEN_BIT] = 0x00;
+    tx_buf[AS60X_FP_LEN_BIT+1] = 0x03;
+    tx_buf[AS60X_FP_INS_CMD_BIT] = 0x05;
+    tx_buf_add_checksum(tx_buf);
+    cnt_tx_pkg_size(&size);
+
+#if DBG_LVL == DBG_LOG
+    rt_kprintf("func:%s tx_size:%d tx: ", __func__, size);
+    for (int i = 0; i < size; i++)
+    {
+        rt_kprintf("%x ", tx_buf[i]);
+    }
+    rt_kprintf("\r\n");
+#endif
+
+    rt_device_write(as60x_dev, 0, tx_buf, size);
+    ret = master_get_rx();
+    if (-RT_ETIMEOUT == ret)
+    {
+        LOG_E("Function fp_gen_char timeout!");
+        code = AS60X_UNDEF_ERR;
+        goto _exit;
+    }
+
+    if ((rx_buf[AS60X_FP_HEAD_BIT] == AS60X_FP_HEAD_H) && (rx_buf[AS60X_FP_HEAD_BIT+1] == AS60X_FP_HEAD_L))
+    {
+        if (cnt_checksum(rx_buf) != 1)
+            code = AS60X_DAT_ERR;
+        else
+            code = (as60x_ack_type_t)rx_buf[AS60X_FP_REP_ACK_BIT(0)]; /* 校验和正确则返回模块确认码 */
+    }
+    else
+    {
+        code = AS60X_DAT_ERR;
+        goto _exit;
+    }
+
+_exit:
+    return code;
+}
+
+as60x_ack_type_t fp_str_char(rt_uint8_t buff_id, rt_uint16_t page_id)
+{
+    as60x_ack_type_t code = AS60X_CMD_OK;
+    rt_err_t ret = -1;
+    rt_size_t size = 0;
+
+    if (flag_vfy != 1)
+    {
+        LOG_E("Please verify the password before using the fingerprint module!");
+        code = AS60X_UNDEF_ERR;
+        goto _exit;
+    }
+
+    if (buff_id < 0x01)
+    {
+        buff_id = 0x01;
+        LOG_W("buff id out of range(0x01-0x02)!");
+    }
+    if (buff_id > 0x02)
+    {
+        buff_id = 0x02;
+        LOG_W("buff id out of range(0x01-0x02)!");
+    }
+
+    tx_buf[AS60X_FP_TOK_BIT] = 0x01;
+    tx_buf[AS60X_FP_LEN_BIT] = 0x00;
+    tx_buf[AS60X_FP_LEN_BIT+1] = 0x06;
+    tx_buf[AS60X_FP_INS_CMD_BIT] = 0x06;
+    tx_buf[AS60X_FP_INS_PAR_BIT(0)] = buff_id;
+    tx_buf[AS60X_FP_INS_PAR_BIT(1)] = (rt_uint8_t)((page_id&0xff00)>>8);
+    tx_buf[AS60X_FP_INS_PAR_BIT(2)] = (rt_uint8_t)(page_id&0x00ff);
+    tx_buf_add_checksum(tx_buf);
+    cnt_tx_pkg_size(&size);
+
+#if DBG_LVL == DBG_LOG
+    rt_kprintf("func:%s tx_size:%d tx: ", __func__, size);
+    for (int i = 0; i < size; i++)
+    {
+        rt_kprintf("%x ", tx_buf[i]);
+    }
+    rt_kprintf("\r\n");
+#endif
+
+    rt_device_write(as60x_dev, 0, tx_buf, size);
+    ret = master_get_rx();
+    if (-RT_ETIMEOUT == ret)
+    {
+        LOG_E("Function fp_search timeout!");
+        code = AS60X_UNDEF_ERR;
+        goto _exit;
+    }
+
+    if ((rx_buf[AS60X_FP_HEAD_BIT] == AS60X_FP_HEAD_H) && (rx_buf[AS60X_FP_HEAD_BIT+1] == AS60X_FP_HEAD_L))
+    {
+        if (cnt_checksum(rx_buf) != 1)
+        {
+            code = AS60X_DAT_ERR;
+            goto _exit;
+        }
+        else
+            code = (as60x_ack_type_t)rx_buf[AS60X_FP_REP_ACK_BIT(0)]; /* 校验和正确则返回模块确认码 */
+    }
+    else
+    {
+        code = AS60X_DAT_ERR;
+        goto _exit;
+    }
+
+_exit:
+    return code;
+}
+
+void as60x_str_fp_to_flash(rt_uint16_t page_id)
+{
+    rt_uint32_t rec = 0;
+    as60x_ack_type_t code = AS60X_CMD_OK;
+
+    rt_kprintf("Wating for touch 1...\r\n");
+    rt_event_recv(&event_fp, EVENT_AS60X_TOUCH, RT_EVENT_FLAG_OR | RT_EVENT_FLAG_CLEAR, RT_WAITING_FOREVER, &rec);
+    LOG_D("detect touch signal!");
+    code = fp_get_image();
+    if (code != AS60X_CMD_OK)
+    {
+        LOG_E("fp_get_image error!");
+    }
+    code = fp_gen_char(0x01);
+    if (code != AS60X_CMD_OK)
+    {
+        LOG_E("fp_get_image error!");
+    }
+
+    rt_kprintf("Wating for touch 2...\r\n");
+    rt_event_recv(&event_fp, EVENT_AS60X_TOUCH, RT_EVENT_FLAG_OR | RT_EVENT_FLAG_CLEAR, RT_WAITING_FOREVER, &rec);
+    LOG_D("detect touch signal!");
+    code = fp_get_image();
+    if (code != AS60X_CMD_OK)
+    {
+        LOG_E("fp_get_image error!");
+    }
+    code = fp_gen_char(0x02);
+    if (code != AS60X_CMD_OK)
+    {
+        LOG_E("fp_get_image error!");
+    }
+
+    code = fp_reg_model();
+    if (code == AS60X_MERGE_FAIL)
+    {
+        LOG_E("Two fingerprints do not belong to the same finger! Please try again.");
+        goto _exit;
+    }
+
+    code = fp_str_char(0x02, page_id);
+    if (code != AS60X_CMD_OK)
+    {
+        if (AS60X_OVER_SIZE == code)
+        {
+            LOG_E("PageID is out of the fingerprint library!");
+            goto _exit;
+        }
+        else if (AS60X_RW_FLASH_ERR == code)
+        {
+            LOG_E("Write FLASH error!");
+            goto _exit;
+        }
+    }
+    else
+        LOG_I("Fingerprint store successful!");
+
+_exit:
+    ;
+}
+
+void as60x_str_fp_to_flash_test(void)
+{
+    LOG_I("store finger print in 0x02");
+    as60x_str_fp_to_flash(0x02);
+}
+MSH_CMD_EXPORT(as60x_str_fp_to_flash_test, "store fingerprint in flash");
+
+void as60x_search_fp_in_flash(void)
+{
+    rt_uint32_t rec = 0;
+    as60x_ack_type_t code = AS60X_CMD_OK;
+
+    rt_kprintf("Wating for touch 1...\r\n");
+    rt_event_recv(&event_fp, EVENT_AS60X_TOUCH, RT_EVENT_FLAG_OR | RT_EVENT_FLAG_CLEAR, RT_WAITING_FOREVER, &rec);
+    LOG_D("detect touch signal!");
+    code = fp_get_image();
+    if (code != AS60X_CMD_OK)
+    {
+        LOG_E("fp_get_image error!");
+    }
+    code = fp_gen_char(0x01);
+    if (code != AS60X_CMD_OK)
+    {
+        LOG_E("fp_get_image error!");
+    }
+
+    fp_search_test();
+}
+MSH_CMD_EXPORT(as60x_search_fp_in_flash, "find the fingerprint");
+
+void as60x_set_hand_shake_baud(rt_uint32_t baud)
+{
+    hs_baud = baud;
+}
 
 void as60x_init(const char *name)
 {
@@ -502,21 +713,13 @@ void as60x_init(const char *name)
         LOG_E("find %s failed!\n", name);
     }
 
+    rt_pin_mode(BSP_AS608_WAK_PIN, PIN_MODE_INPUT_PULLDOWN);
+    rt_pin_attach_irq(BSP_AS608_WAK_PIN, PIN_IRQ_MODE_RISING, as60x_wak_handle, RT_NULL);
+    rt_pin_irq_enable(BSP_AS608_WAK_PIN, PIN_IRQ_ENABLE);
+
     ret = rt_event_init(&event_fp, "ent-fp", RT_IPC_FLAG_FIFO);
-    // event_fp = rt_event_create("ent-fp", RT_IPC_FLAG_FIFO);
-    // if (event_fp == RT_NULL)
     if (ret != RT_EOK)
         LOG_E("event fp creat error!");
-
-    // rt_thread_t thread = rt_thread_create("as60x", as60x_thread_entry, RT_NULL, 1024, 25, 10);
-    // if (thread != RT_NULL)
-    // {
-    //     rt_thread_startup(thread);
-    // }
-    // else
-    // {
-    //     ret = RT_ERROR;
-    // }
 
     as60x_hand_shake();
 }
