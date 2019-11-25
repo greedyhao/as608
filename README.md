@@ -34,7 +34,7 @@ AS608 WAK 管脚需要根据自己需要设置成相应的管脚
 
 [samples.md](doc/samples.md)
 
-## 3、联系方式 & 感谢
+## 4、联系方式 & 感谢
 
 * 维护：greedyhao
 * 主页：<https://github.com/greedyhao>
