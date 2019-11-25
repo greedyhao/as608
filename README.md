@@ -6,7 +6,7 @@ as608 软件包是对 AS60x 系列的指纹模块的支持
 
 ### 1.1 许可证
 
-as608 package 遵循 LGPLv2.1 许可，详见 `LICENSE` 文件。
+as608 package 遵循 Apache-2.0 许可，详见 `LICENSE` 文件。
 
 ### 1.2 依赖
 
