@@ -39,6 +39,9 @@ static rt_uint8_t cnt_checksum(rt_uint8_t *buf)
     rt_uint8_t pkg_len_h = buf[AS60X_FP_LEN_BIT] << 8;
     rt_uint16_t pkg_len = pkg_len_h + buf[AS60X_FP_LEN_BIT+1];
 
+    if (!((rx_buf[AS60X_FP_HEAD_BIT] == AS60X_FP_HEAD_H) && (rx_buf[AS60X_FP_HEAD_BIT+1] == AS60X_FP_HEAD_L)))
+        return checksum_is_ok;
+
     for (i = 0; i < pkg_len; i++)
     {
         checksum += buf[i+AS60X_FP_LEN_BIT];
@@ -292,7 +295,7 @@ as60x_ack_type_t fp_get_image(void)
     {
         LOG_E("Please verify the password before using the fingerprint module!");
         code = AS60X_UNDEF_ERR;
-        goto _exit;
+        return code;
     }
 
     tx_buf[AS60X_FP_TOK_BIT] = 0x01;
@@ -313,23 +316,14 @@ as60x_ack_type_t fp_get_image(void)
     {
         LOG_E("Function fp_get_image timeout!");
         code = AS60X_UNDEF_ERR;
-        goto _exit;
+        return code;
     }
 
-    if ((rx_buf[AS60X_FP_HEAD_BIT] == AS60X_FP_HEAD_H) && (rx_buf[AS60X_FP_HEAD_BIT+1] == AS60X_FP_HEAD_L))
-    {
-        if (cnt_checksum(rx_buf) != 1)
-            code = AS60X_DAT_ERR;
-        else
-            code = (as60x_ack_type_t)rx_buf[AS60X_FP_REP_ACK_BIT(0)]; /* 校验和正确则返回模块确认码 */
-    }
-    else
-    {
+    if (cnt_checksum(rx_buf) != 1)
         code = AS60X_DAT_ERR;
-        goto _exit;
-    }
+    else
+        code = (as60x_ack_type_t)rx_buf[AS60X_FP_REP_ACK_BIT(0)]; /* 校验和正确则返回模块确认码 */
 
-_exit:
     return code;
 }
 
@@ -343,7 +337,7 @@ as60x_ack_type_t fp_gen_char(rt_uint8_t buff_id)
     {
         LOG_E("Please verify the password before using the fingerprint module!");
         code = AS60X_UNDEF_ERR;
-        goto _exit;
+        return code;
     }
 
     if (buff_id < 0x01)
@@ -376,23 +370,14 @@ as60x_ack_type_t fp_gen_char(rt_uint8_t buff_id)
     {
         LOG_E("Function fp_gen_char timeout!");
         code = AS60X_UNDEF_ERR;
-        goto _exit;
+        return code;
     }
 
-    if ((rx_buf[AS60X_FP_HEAD_BIT] == AS60X_FP_HEAD_H) && (rx_buf[AS60X_FP_HEAD_BIT+1] == AS60X_FP_HEAD_L))
-    {
-        if (cnt_checksum(rx_buf) != 1)
-            code = AS60X_DAT_ERR;
-        else
-            code = (as60x_ack_type_t)rx_buf[AS60X_FP_REP_ACK_BIT(0)]; /* 校验和正确则返回模块确认码 */
-    }
-    else
-    {
+    if (cnt_checksum(rx_buf) != 1)
         code = AS60X_DAT_ERR;
-        goto _exit;
-    }
+    else
+        code = (as60x_ack_type_t)rx_buf[AS60X_FP_REP_ACK_BIT(0)]; /* 校验和正确则返回模块确认码 */
 
-_exit:
     return code;
 }
 
@@ -406,7 +391,7 @@ as60x_ack_type_t fp_search(rt_uint16_t *page_id, rt_uint16_t *mat_score)
     {
         LOG_E("Please verify the password before using the fingerprint module!");
         code = AS60X_UNDEF_ERR;
-        goto _exit;
+        return code;
     }
 
     tx_buf[AS60X_FP_TOK_BIT] = 0x01;
@@ -432,32 +417,23 @@ as60x_ack_type_t fp_search(rt_uint16_t *page_id, rt_uint16_t *mat_score)
     {
         LOG_E("Function fp_search timeout!");
         code = AS60X_UNDEF_ERR;
-        goto _exit;
+        return code;
     }
 
-    if ((rx_buf[AS60X_FP_HEAD_BIT] == AS60X_FP_HEAD_H) && (rx_buf[AS60X_FP_HEAD_BIT+1] == AS60X_FP_HEAD_L))
-    {
-        if (cnt_checksum(rx_buf) != 1)
-        {
-            code = AS60X_DAT_ERR;
-            goto _exit;
-        }
-        else
-            code = (as60x_ack_type_t)rx_buf[AS60X_FP_REP_ACK_BIT(0)]; /* 校验和正确则返回模块确认码 */
-        
-        rt_uint8_t page_id_tmp = rx_buf[AS60X_FP_REP_ACK_BIT(1)] << 8;
-        *page_id = page_id_tmp + rx_buf[AS60X_FP_REP_ACK_BIT(2)];
-        rt_uint8_t mat_score_tmp = rx_buf[AS60X_FP_REP_ACK_BIT(3)] << 8;
-        *mat_score = mat_score_tmp + rx_buf[AS60X_FP_REP_ACK_BIT(4)];
-        LOG_D("*page_id=%lx, *mat_score=%lx", *page_id, *mat_score);
-    }
-    else
+    if (cnt_checksum(rx_buf) != 1)
     {
         code = AS60X_DAT_ERR;
-        goto _exit;
+        return code;
     }
+    else
+        code = (as60x_ack_type_t)rx_buf[AS60X_FP_REP_ACK_BIT(0)]; /* 校验和正确则返回模块确认码 */
 
-_exit:
+    rt_uint8_t page_id_tmp = rx_buf[AS60X_FP_REP_ACK_BIT(1)] << 8;
+    *page_id = page_id_tmp + rx_buf[AS60X_FP_REP_ACK_BIT(2)];
+    rt_uint8_t mat_score_tmp = rx_buf[AS60X_FP_REP_ACK_BIT(3)] << 8;
+    *mat_score = mat_score_tmp + rx_buf[AS60X_FP_REP_ACK_BIT(4)];
+    LOG_D("*page_id=%lx, *mat_score=%lx", *page_id, *mat_score);
+
     return code;
 }
 
@@ -479,7 +455,7 @@ as60x_ack_type_t fp_reg_model(void)
     {
         LOG_E("Please verify the password before using the fingerprint module!");
         code = AS60X_UNDEF_ERR;
-        goto _exit;
+        return code;
     }
 
     tx_buf[AS60X_FP_TOK_BIT] = 0x01;
@@ -500,23 +476,14 @@ as60x_ack_type_t fp_reg_model(void)
     {
         LOG_E("Function fp_gen_char timeout!");
         code = AS60X_UNDEF_ERR;
-        goto _exit;
+        return code;
     }
 
-    if ((rx_buf[AS60X_FP_HEAD_BIT] == AS60X_FP_HEAD_H) && (rx_buf[AS60X_FP_HEAD_BIT+1] == AS60X_FP_HEAD_L))
-    {
-        if (cnt_checksum(rx_buf) != 1)
-            code = AS60X_DAT_ERR;
-        else
-            code = (as60x_ack_type_t)rx_buf[AS60X_FP_REP_ACK_BIT(0)]; /* 校验和正确则返回模块确认码 */
-    }
-    else
-    {
+    if (cnt_checksum(rx_buf) != 1)
         code = AS60X_DAT_ERR;
-        goto _exit;
-    }
+    else
+        code = (as60x_ack_type_t)rx_buf[AS60X_FP_REP_ACK_BIT(0)]; /* 校验和正确则返回模块确认码 */
 
-_exit:
     return code;
 }
 
@@ -530,7 +497,7 @@ as60x_ack_type_t fp_str_char(rt_uint8_t buff_id, rt_uint16_t page_id)
     {
         LOG_E("Please verify the password before using the fingerprint module!");
         code = AS60X_UNDEF_ERR;
-        goto _exit;
+        return code;
     }
 
     if (buff_id < 0x01)
@@ -565,26 +532,17 @@ as60x_ack_type_t fp_str_char(rt_uint8_t buff_id, rt_uint16_t page_id)
     {
         LOG_E("Function fp_search timeout!");
         code = AS60X_UNDEF_ERR;
-        goto _exit;
+        return code;
     }
 
-    if ((rx_buf[AS60X_FP_HEAD_BIT] == AS60X_FP_HEAD_H) && (rx_buf[AS60X_FP_HEAD_BIT+1] == AS60X_FP_HEAD_L))
-    {
-        if (cnt_checksum(rx_buf) != 1)
-        {
-            code = AS60X_DAT_ERR;
-            goto _exit;
-        }
-        else
-            code = (as60x_ack_type_t)rx_buf[AS60X_FP_REP_ACK_BIT(0)]; /* 校验和正确则返回模块确认码 */
-    }
-    else
+    if (cnt_checksum(rx_buf) != 1)
     {
         code = AS60X_DAT_ERR;
-        goto _exit;
+        return code;
     }
+    else
+        code = (as60x_ack_type_t)rx_buf[AS60X_FP_REP_ACK_BIT(0)]; /* 校验和正确则返回模块确认码 */
 
-_exit:
     return code;
 }
 
