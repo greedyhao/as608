@@ -101,6 +101,15 @@ static void cnt_rx_pkg_size(rt_size_t *size)
     }
 }
 
+static void print_buf(rt_uint8_t *buf, rt_size_t size)
+{
+    for (int i = 0; i < size; i++)
+    {
+        rt_kprintf("%x ", buf[i]);
+    }
+    rt_kprintf("\r\n");
+}
+
 static rt_err_t as60x_rx(rt_device_t dev, rt_size_t size)
 {
     /* 串口接收到数据后产生中断，调用此回调函数，然后发送接收信号量 */
@@ -219,11 +228,7 @@ static rt_err_t master_get_rx(void)
 
 #if DBG_LVL == DBG_LOG
     rt_kprintf("rx_size:%d rx: ", size+AS60X_PREFIX_SIZE);
-    for (int i = 0; i < size+AS60X_PREFIX_SIZE; i++)
-    {
-        rt_kprintf("%x ", rx_buf[i]);
-    }
-    rt_kprintf("\r\n");
+    print_buf(rx_buf, size+AS60X_PREFIX_SIZE);
 #endif
 
     return ret;
@@ -246,11 +251,7 @@ rt_err_t fp_vfy_password(void)
 
 #if DBG_LVL == DBG_LOG
     rt_kprintf("func:%s tx_size:%d tx: ", __func__, size);
-    for (int i = 0; i < size; i++)
-    {
-        rt_kprintf("%x ", tx_buf[i]);
-    }
-    rt_kprintf("\r\n");
+    print_buf(tx_buf, size);
 #endif
 
     rt_device_write(as60x_dev, 0, tx_buf, size);
@@ -303,11 +304,7 @@ as60x_ack_type_t fp_get_image(void)
 
 #if DBG_LVL == DBG_LOG
     rt_kprintf("func:%s tx_size:%d tx: ", __func__, size);
-    for (int i = 0; i < size; i++)
-    {
-        rt_kprintf("%x ", tx_buf[i]);
-    }
-    rt_kprintf("\r\n");
+    print_buf(tx_buf, size);
 #endif
 
     rt_device_write(as60x_dev, 0, tx_buf, size);
@@ -370,11 +367,7 @@ as60x_ack_type_t fp_gen_char(rt_uint8_t buff_id)
 
 #if DBG_LVL == DBG_LOG
     rt_kprintf("func:%s tx_size:%d tx: ", __func__, size);
-    for (int i = 0; i < size; i++)
-    {
-        rt_kprintf("%x ", tx_buf[i]);
-    }
-    rt_kprintf("\r\n");
+    print_buf(tx_buf, size);
 #endif
 
     rt_device_write(as60x_dev, 0, tx_buf, size);
@@ -430,11 +423,7 @@ as60x_ack_type_t fp_search(rt_uint16_t *page_id, rt_uint16_t *mat_score)
 
 #if DBG_LVL == DBG_LOG
     rt_kprintf("func:%s tx_size:%d tx: ", __func__, size);
-    for (int i = 0; i < size; i++)
-    {
-        rt_kprintf("%x ", tx_buf[i]);
-    }
-    rt_kprintf("\r\n");
+    print_buf(tx_buf, size);
 #endif
 
     rt_device_write(as60x_dev, 0, tx_buf, size);
@@ -502,11 +491,7 @@ as60x_ack_type_t fp_reg_model(void)
 
 #if DBG_LVL == DBG_LOG
     rt_kprintf("func:%s tx_size:%d tx: ", __func__, size);
-    for (int i = 0; i < size; i++)
-    {
-        rt_kprintf("%x ", tx_buf[i]);
-    }
-    rt_kprintf("\r\n");
+    print_buf(tx_buf, size);
 #endif
 
     rt_device_write(as60x_dev, 0, tx_buf, size);
@@ -571,11 +556,7 @@ as60x_ack_type_t fp_str_char(rt_uint8_t buff_id, rt_uint16_t page_id)
 
 #if DBG_LVL == DBG_LOG
     rt_kprintf("func:%s tx_size:%d tx: ", __func__, size);
-    for (int i = 0; i < size; i++)
-    {
-        rt_kprintf("%x ", tx_buf[i]);
-    }
-    rt_kprintf("\r\n");
+    print_buf(tx_buf, size);
 #endif
 
     rt_device_write(as60x_dev, 0, tx_buf, size);
