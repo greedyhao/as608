@@ -1,6 +1,6 @@
 /**
  * @author greedyhao (hao_kr@163.com)
- * @version 1.0.0
+ * @version 1.0.1
  * @date 2019-11-24
  *  
  */
@@ -9,11 +9,12 @@
 #include <dfs_posix.h>
 
 #define DBG_TAG              "fp.dev"
-// #define DBG_LVL              DBG_INFO
-#define DBG_LVL              DBG_LOG
+#define DBG_LVL              DBG_INFO
+// #define DBG_LVL              DBG_LOG
 #include <rtdbg.h>
 
 #define BUF_SIZE    50U
+#define RETRY_CNT   20U
 static rt_uint8_t tx_buf[BUF_SIZE] = {AS60X_FP_HEAD_H, AS60X_FP_HEAD_L, AS60X_FP_ADDR_0,
                                 AS60X_FP_ADDR_1, AS60X_FP_ADDR_2, AS60X_FP_ADDR_3};
 static rt_uint8_t rx_buf[BUF_SIZE];
@@ -53,7 +54,7 @@ static rt_uint8_t cnt_checksum(rt_uint8_t *buf)
         checksum_is_ok = 1;
     else
     {
-        LOG_D("checksum_1:%x,checksum_2:%x,sum_1:%x,sum_2:%x", checksum&0xff00,checksum&0x00ff,*(buf+AS60X_PREFIX_SIZE+pkg_len-2),*(buf+AS60X_PREFIX_SIZE+pkg_len-1));
+        LOG_E("checksum_1:%x,checksum_2:%x,sum_1:%x,sum_2:%x", checksum&0xff00,checksum&0x00ff,*(buf+AS60X_PREFIX_SIZE+pkg_len-2),*(buf+AS60X_PREFIX_SIZE+pkg_len-1));
     }
 
     return checksum_is_ok;
@@ -83,27 +84,34 @@ static void tx_buf_add_checksum(rt_uint8_t *buf)
     *(buf+AS60X_PREFIX_SIZE+pkg_len-1) = checksum&0x00ff;
 }
 
-static void cnt_tx_pkg_size(rt_size_t *size)
+static rt_size_t cnt_tx_pkg_size(void)
 {
+    rt_size_t result = 0;
     rt_enter_critical();
     rt_uint8_t size_tmp = tx_buf[AS60X_FP_LEN_BIT] << 8;
-    *size = size_tmp + tx_buf[AS60X_FP_LEN_BIT+1] + AS60X_PREFIX_SIZE;
+    result = size_tmp + tx_buf[AS60X_FP_LEN_BIT+1] + AS60X_PREFIX_SIZE;
     rt_exit_critical();
+
+    return result;
 }
 
-static void cnt_rx_pkg_size(rt_size_t *size)
+static rt_size_t cnt_rx_pkg_size(void)
 {
+    rt_size_t result = 0;
     rt_enter_critical();
     rt_uint8_t size_tmp = rx_buf[AS60X_FP_LEN_BIT] << 8;
-    *size = size_tmp + rx_buf[AS60X_FP_LEN_BIT+1];
+    result = size_tmp + rx_buf[AS60X_FP_LEN_BIT+1];
     rt_exit_critical();
-    if (*size > BUF_SIZE)
+    if (result > BUF_SIZE)
     {
-        *size = (rt_size_t)(BUF_SIZE - AS60X_PREFIX_SIZE);
+        result = (rt_size_t)(BUF_SIZE - AS60X_PREFIX_SIZE);
         LOG_W("Next packet is out of buf size!");
     }
+
+    return result;
 }
 
+#if DBG_LVL == DBG_LOG
 static void print_buf(rt_uint8_t *buf, rt_size_t size)
 {
     for (int i = 0; i < size; i++)
@@ -112,6 +120,7 @@ static void print_buf(rt_uint8_t *buf, rt_size_t size)
     }
     rt_kprintf("\r\n");
 }
+#endif
 
 static rt_err_t as60x_rx(rt_device_t dev, rt_size_t size)
 {
@@ -172,23 +181,22 @@ static rt_err_t as60x_hand_shake(void)
     ret = fp_vfy_password();
     if (ret == -RT_ETIMEOUT)
     {
-        LOG_I("Hand shake in %d timeout.", as60x_cfg.baud_rate);
-        rt_device_close(as60x_dev);
+        LOG_E("Hand shake in %d timeout.", as60x_cfg.baud_rate);
     }
     else if (ret == -RT_EINVAL)
     {
-        LOG_I("Recived PKG no vaild!");
+        LOG_E("Recived PKG no vaild!");
     }
     else if (ret == -RT_ERROR)
     {
         LOG_E("Hand shake error!");
-        rt_device_close(as60x_dev);
     }
     else if (ret == RT_EOK)
     {
         LOG_I("Establish connection in %d successfully!", as60x_cfg.baud_rate);
         return RT_EOK;
     }
+    rt_device_close(as60x_dev);
 
     ret = -RT_ERROR;
     return ret;    
@@ -208,13 +216,14 @@ static rt_err_t master_get_rx(void)
     memset(rx_buf, 0x00, BUF_SIZE);
     LOG_D("after clear rx_buf[0]=%x",rx_buf[0]);
 
+    rt_thread_mdelay(10);
     do
     {
         rt_device_read(as60x_dev, -1, rx_buf, (rt_size_t)1);
         rx_cnt++;
-    } while ((rx_buf[0] != 0xEF)&&(rx_cnt < 20)); /* 清除串口缓冲中的脏数据 */
+    } while ((rx_buf[0] != 0xEF)&&(rx_cnt < RETRY_CNT)); /* 清除串口缓冲中的脏数据 */
 
-    if (rx_cnt >= 20)
+    if (rx_cnt >= RETRY_CNT)
     {
         ret = -RT_ETIMEOUT;
         return ret;
@@ -225,7 +234,7 @@ static rt_err_t master_get_rx(void)
     LOG_D("after first read rx_buf[AS60X_FP_LEN_BIT+1]=%x",rx_buf[AS60X_FP_LEN_BIT+1]);
 
     rt_event_recv(&event_fp, EVENT_AS60X_RX, RT_EVENT_FLAG_OR | RT_EVENT_FLAG_CLEAR, 0, &rec);
-    cnt_rx_pkg_size(&size); /* 计算包长度 */
+    size = cnt_rx_pkg_size(); /* 计算包长度 */
     rt_device_read(as60x_dev, -1, rx_buf+AS60X_PREFIX_SIZE, size);  /* 获取包剩下数据 */
     rt_event_recv(&event_fp, EVENT_AS60X_RX, RT_EVENT_FLAG_OR | RT_EVENT_FLAG_CLEAR, 0, &rec);
 
@@ -239,7 +248,7 @@ static rt_err_t master_get_rx(void)
 
 rt_err_t fp_vfy_password(void)
 {
-    rt_err_t ret = -1;
+    rt_err_t result = -1;
     rt_size_t size = 0;
     tx_buf[AS60X_FP_TOK_BIT] = 0x01;
     tx_buf[AS60X_FP_LEN_BIT] = 0x00;
@@ -250,7 +259,7 @@ rt_err_t fp_vfy_password(void)
     tx_buf[AS60X_FP_INS_PAR_BIT(2)] = 0x00;
     tx_buf[AS60X_FP_INS_PAR_BIT(3)] = 0x00;
     tx_buf_add_checksum(tx_buf);
-    cnt_tx_pkg_size(&size);
+    size = cnt_tx_pkg_size();
 
 #if DBG_LVL == DBG_LOG
     rt_kprintf("func:%s tx_size:%d tx: ", __func__, size);
@@ -258,25 +267,23 @@ rt_err_t fp_vfy_password(void)
 #endif
 
     rt_device_write(as60x_dev, 0, tx_buf, size);
-    ret = master_get_rx();
-    if (ret != RT_EOK)
-        return ret;
+    // rt_thread_mdelay(10);
+    result = master_get_rx();
+    if (result != RT_EOK)
+        return result;
 
-    if ((rx_buf[AS60X_FP_HEAD_BIT] == AS60X_FP_HEAD_H) && (rx_buf[AS60X_FP_HEAD_BIT+1] == AS60X_FP_HEAD_L))
+    if (cnt_checksum(rx_buf) == 1)
     {
         if ((rx_buf[AS60X_FP_REP_ACK_BIT(0)] == 0x00) && (rx_buf[AS60X_FP_REP_ACK_BIT(1)] == 0x00))
         {
             flag_vfy = 1;
-            ret = RT_EOK;
+            result = RT_EOK;
         }
     }
     else
-    {
-        ret = -RT_EINVAL;
-        return ret;
-    }
+        result = -RT_EINVAL;
 
-    return ret;
+    return result;
 }
 
 /**
@@ -303,7 +310,7 @@ as60x_ack_type_t fp_get_image(void)
     tx_buf[AS60X_FP_LEN_BIT+1] = 0x03;
     tx_buf[AS60X_FP_INS_CMD_BIT] = 0x01;
     tx_buf_add_checksum(tx_buf);
-    cnt_tx_pkg_size(&size);
+    size = cnt_tx_pkg_size();
 
 #if DBG_LVL == DBG_LOG
     rt_kprintf("func:%s tx_size:%d tx: ", __func__, size);
@@ -319,10 +326,10 @@ as60x_ack_type_t fp_get_image(void)
         return code;
     }
 
-    if (cnt_checksum(rx_buf) != 1)
-        code = AS60X_DAT_ERR;
-    else
+    if (cnt_checksum(rx_buf) == 1)
         code = (as60x_ack_type_t)rx_buf[AS60X_FP_REP_ACK_BIT(0)]; /* 校验和正确则返回模块确认码 */
+    else
+        code = AS60X_DAT_ERR;
 
     return code;
 }
@@ -357,7 +364,7 @@ as60x_ack_type_t fp_gen_char(rt_uint8_t buff_id)
     tx_buf[AS60X_FP_INS_CMD_BIT] = 0x02;
     tx_buf[AS60X_FP_INS_PAR_BIT(0)] = buff_id;
     tx_buf_add_checksum(tx_buf);
-    cnt_tx_pkg_size(&size);
+    size = cnt_tx_pkg_size();
 
 #if DBG_LVL == DBG_LOG
     rt_kprintf("func:%s tx_size:%d tx: ", __func__, size);
@@ -373,10 +380,10 @@ as60x_ack_type_t fp_gen_char(rt_uint8_t buff_id)
         return code;
     }
 
-    if (cnt_checksum(rx_buf) != 1)
-        code = AS60X_DAT_ERR;
-    else
+    if (cnt_checksum(rx_buf) == 1)
         code = (as60x_ack_type_t)rx_buf[AS60X_FP_REP_ACK_BIT(0)]; /* 校验和正确则返回模块确认码 */
+    else
+        code = AS60X_DAT_ERR;
 
     return code;
 }
@@ -404,7 +411,7 @@ as60x_ack_type_t fp_search(rt_uint16_t *page_id, rt_uint16_t *mat_score)
     tx_buf[AS60X_FP_INS_PAR_BIT(3)] = 0x01;
     tx_buf[AS60X_FP_INS_PAR_BIT(4)] = 0x2C;
     tx_buf_add_checksum(tx_buf);
-    cnt_tx_pkg_size(&size);
+    size = cnt_tx_pkg_size();
 
 #if DBG_LVL == DBG_LOG
     rt_kprintf("func:%s tx_size:%d tx: ", __func__, size);
@@ -420,13 +427,13 @@ as60x_ack_type_t fp_search(rt_uint16_t *page_id, rt_uint16_t *mat_score)
         return code;
     }
 
-    if (cnt_checksum(rx_buf) != 1)
+    if (cnt_checksum(rx_buf) == 1)
+        code = (as60x_ack_type_t)rx_buf[AS60X_FP_REP_ACK_BIT(0)]; /* 校验和正确则返回模块确认码 */
+    else
     {
         code = AS60X_DAT_ERR;
         return code;
     }
-    else
-        code = (as60x_ack_type_t)rx_buf[AS60X_FP_REP_ACK_BIT(0)]; /* 校验和正确则返回模块确认码 */
 
     rt_uint8_t page_id_tmp = rx_buf[AS60X_FP_REP_ACK_BIT(1)] << 8;
     *page_id = page_id_tmp + rx_buf[AS60X_FP_REP_ACK_BIT(2)];
@@ -463,7 +470,7 @@ as60x_ack_type_t fp_reg_model(void)
     tx_buf[AS60X_FP_LEN_BIT+1] = 0x03;
     tx_buf[AS60X_FP_INS_CMD_BIT] = 0x05;
     tx_buf_add_checksum(tx_buf);
-    cnt_tx_pkg_size(&size);
+    size = cnt_tx_pkg_size();
 
 #if DBG_LVL == DBG_LOG
     rt_kprintf("func:%s tx_size:%d tx: ", __func__, size);
@@ -479,10 +486,10 @@ as60x_ack_type_t fp_reg_model(void)
         return code;
     }
 
-    if (cnt_checksum(rx_buf) != 1)
-        code = AS60X_DAT_ERR;
-    else
+    if (cnt_checksum(rx_buf) == 1)
         code = (as60x_ack_type_t)rx_buf[AS60X_FP_REP_ACK_BIT(0)]; /* 校验和正确则返回模块确认码 */
+    else
+        code = AS60X_DAT_ERR;
 
     return code;
 }
@@ -519,7 +526,7 @@ as60x_ack_type_t fp_str_char(rt_uint8_t buff_id, rt_uint16_t page_id)
     tx_buf[AS60X_FP_INS_PAR_BIT(1)] = (rt_uint8_t)((page_id&0xff00)>>8);
     tx_buf[AS60X_FP_INS_PAR_BIT(2)] = (rt_uint8_t)(page_id&0x00ff);
     tx_buf_add_checksum(tx_buf);
-    cnt_tx_pkg_size(&size);
+    size = cnt_tx_pkg_size();
 
 #if DBG_LVL == DBG_LOG
     rt_kprintf("func:%s tx_size:%d tx: ", __func__, size);
@@ -535,13 +542,10 @@ as60x_ack_type_t fp_str_char(rt_uint8_t buff_id, rt_uint16_t page_id)
         return code;
     }
 
-    if (cnt_checksum(rx_buf) != 1)
-    {
-        code = AS60X_DAT_ERR;
-        return code;
-    }
-    else
+    if (cnt_checksum(rx_buf) == 1)
         code = (as60x_ack_type_t)rx_buf[AS60X_FP_REP_ACK_BIT(0)]; /* 校验和正确则返回模块确认码 */
+    else
+        code = AS60X_DAT_ERR;
 
     return code;
 }
@@ -551,7 +555,7 @@ void as60x_str_fp_to_flash(rt_uint16_t page_id)
     rt_uint32_t rec = 0;
     as60x_ack_type_t code = AS60X_CMD_OK;
 
-    rt_kprintf("Wating for touch 1...\r\n");
+    LOG_I("Wating for touch 1...");
     rt_event_recv(&event_fp, EVENT_AS60X_TOUCH, RT_EVENT_FLAG_OR | RT_EVENT_FLAG_CLEAR, RT_WAITING_FOREVER, &rec);
     LOG_D("detect touch signal!");
     code = fp_get_image();
@@ -565,7 +569,7 @@ void as60x_str_fp_to_flash(rt_uint16_t page_id)
         LOG_E("fp_get_image error!");
     }
 
-    rt_kprintf("Wating for touch 2...\r\n");
+    LOG_I("Wating for touch 2...");
     rt_event_recv(&event_fp, EVENT_AS60X_TOUCH, RT_EVENT_FLAG_OR | RT_EVENT_FLAG_CLEAR, RT_WAITING_FOREVER, &rec);
     LOG_D("detect touch signal!");
     code = fp_get_image();
@@ -583,7 +587,7 @@ void as60x_str_fp_to_flash(rt_uint16_t page_id)
     if (code == AS60X_MERGE_FAIL)
     {
         LOG_E("Two fingerprints do not belong to the same finger! Please try again.");
-        goto _exit;
+        return;
     }
 
     code = fp_str_char(0x02, page_id);
@@ -592,19 +596,16 @@ void as60x_str_fp_to_flash(rt_uint16_t page_id)
         if (AS60X_OVER_SIZE == code)
         {
             LOG_E("PageID is out of the fingerprint library!");
-            goto _exit;
+            return;
         }
         else if (AS60X_RW_FLASH_ERR == code)
         {
             LOG_E("Write FLASH error!");
-            goto _exit;
+            return;
         }
     }
     else
         LOG_I("Fingerprint store successful!");
-
-_exit:
-    ;
 }
 
 void as60x_str_fp_to_flash_test(void)
