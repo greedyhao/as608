@@ -50,7 +50,7 @@ static rt_uint8_t cnt_checksum(rt_uint8_t *buf)
     checksum += buf[AS60X_FP_TOK_BIT];
 
     if ((*(buf+AS60X_PREFIX_SIZE+pkg_len-2) == ((checksum&0xff00)>>8))
-    && (*(buf+AS60X_PREFIX_SIZE+pkg_len-1) == checksum&0x00ff))
+    && (*(buf+AS60X_PREFIX_SIZE+pkg_len-1) == (checksum&0x00ff)))
         checksum_is_ok = 1;
     else
     {
@@ -80,7 +80,7 @@ static void tx_buf_add_checksum(rt_uint8_t *buf)
     }
     checksum += buf[AS60X_FP_TOK_BIT];
 
-    *(buf+AS60X_PREFIX_SIZE+pkg_len-2) = (checksum&0xff00)<<8;
+    *(buf+AS60X_PREFIX_SIZE+pkg_len-2) = (checksum&0xff00)>>8;
     *(buf+AS60X_PREFIX_SIZE+pkg_len-1) = checksum&0x00ff;
 }
 
@@ -653,9 +653,9 @@ void as60x_init(const char *name)
         LOG_E("find %s failed!\n", name);
     }
 
-    rt_pin_mode(BSP_AS608_WAK_PIN, PIN_MODE_INPUT_PULLDOWN);
-    rt_pin_attach_irq(BSP_AS608_WAK_PIN, PIN_IRQ_MODE_RISING, as60x_wak_handle, RT_NULL);
-    rt_pin_irq_enable(BSP_AS608_WAK_PIN, PIN_IRQ_ENABLE);
+    rt_pin_mode(PKG_AS608_WAK_PIN, PIN_MODE_INPUT_PULLDOWN);
+    rt_pin_attach_irq(PKG_AS608_WAK_PIN, PIN_IRQ_MODE_RISING, as60x_wak_handle, RT_NULL);
+    rt_pin_irq_enable(PKG_AS608_WAK_PIN, PIN_IRQ_ENABLE);
 
     ret = rt_event_init(&event_fp, "ent-fp", RT_IPC_FLAG_FIFO);
     if (ret != RT_EOK)
