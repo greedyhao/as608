@@ -1,7 +1,7 @@
 /**
  * @author greedyhao (hao_kr@163.com)
- * @version 1.0.1
- * @date 2019-11-24
+ * @version 1.0.2
+ * @date 2020-2-21
  *  
  */
 
@@ -232,7 +232,19 @@ void as60x_str_fp_to_flash(rt_uint16_t page_id);
 /**
  * @brief 指纹搜索函数
  * 
+ * @param page_id 
+ * @param mat_score 
+ * @return as60x_ack_type_t 
  */
-void as60x_search_fp_in_flash(void);
+as60x_ack_type_t as60x_search_fp_in_flash(rt_uint16_t *page_id, rt_uint16_t *mat_score);
+
+/**
+ * @brief 删除 flash 数据库中指定 ID 号开始的 N 个指纹模板
+ * 
+ * @param page_id 
+ * @param n 
+ * @return as60x_ack_type_t 
+ */
+as60x_ack_type_t as60x_delet_fp_n_id(rt_uint16_t page_id, rt_uint16_t n);
 
 #endif
