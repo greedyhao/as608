@@ -22,6 +22,8 @@ static rt_uint8_t rx_buf[BUF_SIZE];
 #define EVENT_AS60X_RX      (1 << 0)
 #define EVENT_AS60X_TOUCH   (1 << 1)
 static struct rt_event event_fp;
+static rt_event_t evt_fp_p = &event_fp;
+static rt_uint32_t evt_touch_set = (rt_uint32_t)EVENT_AS60X_TOUCH;
 static rt_device_t as60x_dev;
 static rt_uint8_t flag_vfy = 0; /* 握手成功标志 */
 static rt_uint32_t hs_baud = 0;
@@ -123,7 +125,7 @@ static void print_buf(rt_uint8_t *buf, rt_size_t size)
 }
 #endif
 
-static rt_err_t as60x_rx(rt_device_t dev, rt_size_t size)
+static rt_err_t as60x_rx_handle(rt_device_t dev, rt_size_t size)
 {
     /* 串口接收到数据后产生中断，调用此回调函数，然后发送接收信号量 */
     rt_event_send(&event_fp, EVENT_AS60X_RX);
@@ -133,7 +135,8 @@ static rt_err_t as60x_rx(rt_device_t dev, rt_size_t size)
 
 static void as60x_wak_handle(void *args)
 {
-    rt_event_send(&event_fp, EVENT_AS60X_TOUCH);
+//    rt_event_send(&event_fp, EVENT_AS60X_TOUCH);
+    rt_event_send(evt_fp_p, evt_touch_set);
 }
 
 static rt_err_t as60x_hand_shake(void)
@@ -146,14 +149,14 @@ static rt_err_t as60x_hand_shake(void)
     //                              76800, 67200, 48000, 28800};
 
     rt_device_open(as60x_dev, RT_DEVICE_FLAG_INT_RX);
-    rt_device_set_rx_indicate(as60x_dev, as60x_rx);
+    rt_device_set_rx_indicate(as60x_dev, as60x_rx_handle);
 
     // for (i = 0; i < 12; i++) /* 使用 N*9600 的波特率进行握手测试 */
     // {
     //     as60x_cfg.baud_rate = baud_table[i%12];
     //     rt_device_control(as60x_dev, RT_DEVICE_CTRL_CONFIG, &as60x_cfg);
     //     // rt_device_open(as60x_dev, RT_DEVICE_FLAG_INT_RX);
-    //     // rt_device_set_rx_indicate(as60x_dev, as60x_rx);
+    //     // rt_device_set_rx_indicate(as60x_dev, as60x_rx_handle);
     //     ret = fp_vfy_password();
     //     if (ret == -RT_ETIMEOUT)
     //     {
@@ -290,6 +293,13 @@ static as60x_ack_type_t get_img_gen_ch(rt_uint8_t buff_id)
         LOG_E("fp_get_image error!id=0x%x", (rt_uint16_t)code);
     }
     return code;
+}
+
+void fp_wak_evt_reg(rt_event_t evt, rt_uint32_t set)
+{
+    if (evt == NULL) return;
+    evt_fp_p = evt;
+    evt_touch_set = set;
 }
 
 rt_err_t fp_vfy_password(void)
@@ -539,12 +549,14 @@ void as60x_str_fp_to_flash(rt_uint16_t page_id)
     as60x_ack_type_t code = AS60X_CMD_OK;
 
     LOG_I("Wating for touch 1...");
-    rt_event_recv(&event_fp, EVENT_AS60X_TOUCH, RT_EVENT_FLAG_OR | RT_EVENT_FLAG_CLEAR, RT_WAITING_FOREVER, &rec);
+//    rt_event_recv(&event_fp, EVENT_AS60X_TOUCH, RT_EVENT_FLAG_OR | RT_EVENT_FLAG_CLEAR, RT_WAITING_FOREVER, &rec);
+    rt_event_recv(evt_fp_p, evt_touch_set, RT_EVENT_FLAG_OR | RT_EVENT_FLAG_CLEAR, RT_WAITING_FOREVER, &rec);
     LOG_D("detect touch signal!");
     code = get_img_gen_ch(0x01);
 
     LOG_I("Wating for touch 2...");
-    rt_event_recv(&event_fp, EVENT_AS60X_TOUCH, RT_EVENT_FLAG_OR | RT_EVENT_FLAG_CLEAR, RT_WAITING_FOREVER, &rec);
+//    rt_event_recv(&event_fp, EVENT_AS60X_TOUCH, RT_EVENT_FLAG_OR | RT_EVENT_FLAG_CLEAR, RT_WAITING_FOREVER, &rec);
+    rt_event_recv(evt_fp_p, evt_touch_set, RT_EVENT_FLAG_OR | RT_EVENT_FLAG_CLEAR, RT_WAITING_FOREVER, &rec);
     LOG_D("detect touch signal!");
     code = get_img_gen_ch(0x02);
 
@@ -585,7 +597,8 @@ as60x_ack_type_t as60x_search_fp_in_flash(rt_uint16_t *page_id, rt_uint16_t *mat
     as60x_ack_type_t code = AS60X_CMD_OK;
 
     rt_kprintf("Wating for touch 1...\r\n");
-    rt_event_recv(&event_fp, EVENT_AS60X_TOUCH, RT_EVENT_FLAG_OR | RT_EVENT_FLAG_CLEAR, RT_WAITING_FOREVER, RT_NULL);
+//    rt_event_recv(&event_fp, EVENT_AS60X_TOUCH, RT_EVENT_FLAG_OR | RT_EVENT_FLAG_CLEAR, RT_WAITING_FOREVER, RT_NULL);
+    rt_event_recv(evt_fp_p, evt_touch_set, RT_EVENT_FLAG_OR | RT_EVENT_FLAG_CLEAR, RT_WAITING_FOREVER, RT_NULL);
     LOG_D("detect touch signal!");
     code = get_img_gen_ch(0x01);
 
