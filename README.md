@@ -12,7 +12,7 @@ as608 package 遵循 Apache-2.0 许可，详见 `LICENSE` 文件。
 
 - RT-Thread 4.0+
 
-## 2、如何打开 agile_button
+## 2、如何打开 as608
 
 使用 as608 package 需要先使用 `pkgs --upgrade` 更新包列表
 
