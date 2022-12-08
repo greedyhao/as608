@@ -6,7 +6,6 @@
  */
 
 #include "as608.h"
-#include <dfs_posix.h>
 
 #define DBG_TAG              "fp.dev"
 #define DBG_LVL              DBG_INFO
@@ -217,7 +216,7 @@ static rt_err_t master_get_rx(void)
     if (ret != RT_EOK)
         return ret;
 
-    memset(rx_buf, 0x00, BUF_SIZE);
+    rt_memset(rx_buf, 0x00, BUF_SIZE);
     LOG_D("after clear rx_buf[0]=%x",rx_buf[0]);
 
     rt_thread_mdelay(10);
@@ -630,6 +629,13 @@ as60x_ack_type_t as60x_delet_fp_n_id(rt_uint16_t page_id, rt_uint16_t n)
     tx_buf[AS60X_FP_INS_PAR_BIT(3)] = (rt_uint8_t)(n&0x00ff);
 
     rt_err_t ret = make_prefix(__func__);
+    
+    if (-RT_ETIMEOUT == ret)
+    {
+        LOG_E("Function as60x_delet_fp_n_id timeout!");
+        code = AS60X_UNDEF_ERR;
+        return code;
+    }
 
     if (cnt_checksum(rx_buf) == 1)
         code = (as60x_ack_type_t)rx_buf[AS60X_FP_REP_ACK_BIT(0)]; /* 校验和正确则返回模块确认码 */
